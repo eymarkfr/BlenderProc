@@ -1,0 +1,298 @@
+# Args: <obj_file> <texture_file> <output_dir>
+{
+  "version": 3,
+  "setup": {
+    "blender_install_path": "/home_local/<env:USER>/blender/",
+    "pip": [
+      "h5py",
+      "scikit-image",
+      "pypng==0.0.20",
+      "scipy==1.2.2",
+      "matplotlib==2.2.4"
+    ]
+  },
+  "modules": [
+    {
+      "module": "main.Initializer",
+      "config":{
+        "global": {
+          "output_dir": "<args:6>",
+          "sys_paths": ["<args:2>"]
+        }
+      }
+    },
+    {
+      "module": "loader.BopLoader",
+      "config": {
+        "bop_dataset_path": "<args:0>/lm",
+        "model_type": "",
+        "mm2m": True,
+        "sample_objects": True,
+        "num_of_objs_to_sample": 3,
+        "obj_instances_limit": 1,
+        "add_properties": {
+          "cp_physics": True
+        },
+        "cf_set_shading": "SMOOTH"
+      }
+    },
+    {
+      "module": "loader.BopLoader",
+      "config": {
+        "bop_dataset_path": "<args:0>/<args:1>",
+        "model_type": "",
+        "mm2m": True,
+        "sample_objects": True,
+        "num_of_objs_to_sample": 10,
+        "add_properties": {
+          "cp_physics": True
+        },
+        "cf_set_shading": "SMOOTH"
+      }
+    },
+    {
+      "module": "manipulators.MaterialManipulator",
+      "config": {
+        "selector": {
+          "provider": "getter.Material",
+          "conditions": [
+          {
+            "name": "bop_tless_vertex_col_material.*"
+          }
+          ]
+        },
+        "cf_set_base_color": {
+          "provider": "sampler.Color",
+          "grey": True,
+          "min": [0.1, 0.1, 0.1, 1.0],
+          "max": [0.9, 0.9, 0.9, 1.0]
+        }
+      }
+    },
+    {
+      "module": "manipulators.MaterialManipulator",
+      "config": {
+        "selector": {
+          "provider": "getter.Material",
+          "conditions": [
+          {
+            "name": "bop_tless_vertex_col_material.*"
+          },
+          {
+            "name": "bop_lm_vertex_col_material.*"
+          },
+          {
+            "name": "bop_<args:1>_vertex_col_material.*"
+          }
+          ]
+        },
+        "cf_set_specular": {
+          "provider": "sampler.Value",
+          "type": "float",
+          "min": 0.0,
+          "max": 1.0
+        },
+        "cf_set_roughness": {
+          "provider": "sampler.Value",
+          "type": "float",
+          "min": 0.0,
+          "max": 1.0
+        }
+      }
+    },
+    {
+      "module": "loader.SceneNetLoader",
+      "config": {
+        "file_path": "<args:4>",
+        "texture_folder": "<args:5>",
+        "add_properties": {
+          "cp_physics": False
+        }
+      }
+    },
+    {
+      "module": "object.FloorExtractor",
+      "config": {
+        "selector": {
+          "provider": "getter.Entity",
+          "conditions": {
+            "cp_category_id": 1
+          }
+        }, # this one you need to now beforehand
+        "compare_angle_degrees" : 7.5,
+        "compare_height": 0.15,
+        "name_for_split_obj": "floor",  # this is the new name of the object
+        "add_properties": {
+          "cp_category_id": 2,
+          "cp_physics": False,
+        },
+        "should_skip_if_object_is_already_there": True
+      }
+    },
+    {
+      "module": "object.FloorExtractor",
+      "config": {
+        "selector": {
+          "provider": "getter.Entity",
+          "conditions": {
+            "cp_category_id": 1
+          }
+        },
+        "should_skip_if_object_is_already_there": True,
+        "up_vector_upwards": False,  # the polygons are now facing downwards: [0, 0, -1]
+        "compare_angle_degrees": 7.5,
+        "compare_height": 0.15,
+        "add_properties": {
+          "cp_category_id": 1
+        },
+        "name_for_split_obj": "ceiling"
+      }
+    },
+    {
+      "module": "lighting.SurfaceLighting",
+      "config": {
+        "selector": {
+          "provider": "getter.Entity",
+            "conditions": {
+              "name": ".*[l|L]amp.*"
+            }
+        },
+        "emission_strength": 15.0,
+        "keep_using_base_color": True
+      }
+    },
+    {
+      "module": "lighting.SurfaceLighting",
+      "config": {
+        "selector": {
+          "provider": "getter.Entity",
+            "conditions": {
+              "name": ".*[c|C]eiling.*"
+            }
+        },
+        "emission_strength": 2.0,
+      }
+    },
+    {
+      "module": "manipulators.EntityManipulator",
+      "config": {
+        # get all shape net objects, as we have only loaded one this returns only one entity
+        "selector": {
+          "provider": "getter.Entity",
+          "conditions": {
+            "cp_physics": True,
+            "type": "MESH"
+          }
+        },
+        # Sets the location of this entity above a bed
+        "location": {
+          "provider": "sampler.UpperRegionSampler",
+          "min_height": 0.3,
+          "to_sample_on": {
+              "provider": "getter.Entity",
+              "conditions": {
+                "cp_category_id": 2, # 4 is the category of the bed
+                "type": "MESH"
+              }
+
+          }
+        },
+        # by adding a modifier we avoid that the objects falls through other objects during the physics simulation
+        "cf_add_modifier": {
+          "name": "Solidify",
+          "thickness": 0.0025
+        }
+      }
+    },
+    {
+      "module": "object.PhysicsPositioning",
+      "config": {
+        "min_simulation_time": 3,
+        "max_simulation_time": 10,
+        "check_object_interval": 1,
+        "solver_iters": 25,
+        "substeps_per_frame": 20,
+        "friction": 100.0,
+        "linear_damping": 0.99,
+        "angular_damping": 0.99,
+        "objs_with_box_collision_shape": {
+          "provider": "getter.Entity",
+          "conditions": {
+            "cp_category_id": 2
+          }
+        }
+      }
+    },
+    {
+      "module": "camera.CameraSampler",
+      "config": {
+        "min_var_diff_translation": 5.0,
+        "cam_poses": [{
+          "number_of_samples": 5,
+          "proximity_checks": {
+            "min": 1.0
+          },
+          "min_interest_score": 0.1,
+          "location": {
+            "provider": "sampler.UpperRegionSampler",
+            "min_height": 1.5,
+            "max_height": 1.8,
+            "to_sample_on": {
+              "provider": "getter.Entity",
+              "conditions": {
+                "cp_category_id": 2
+              }
+            }
+          },
+          "rotation": {
+            "format": "look_at",
+            "value": {
+              "provider": "getter.POI",
+              "selector": {
+                "provider": "getter.Entity",
+                "conditions": {
+                  "type": "MESH",
+                  "cp_bop_dataset_name": "<args:1>",
+                },
+                "random_samples": 10
+              }
+            },
+            "inplane_rot": {
+              "provider": "sampler.Value",
+              "type": "float",
+              "min": -0.7854,
+              "max": 0.7854
+            }
+          },
+          "check_if_pose_above_object_list": {
+            "provider": "getter.Entity",
+            "conditions": {
+              "cp_category_id": 2,
+              "type": "MESH"
+            }
+          }
+        }]
+      }
+    },
+    {
+      "module": "renderer.RgbRenderer",
+      "config": {
+        "samples": 2,
+        "render_distance": True,
+        "image_type": "JPEG"
+      }
+    },
+    {
+      "module": "writer.BopWriter",
+      "config": {
+        "dataset": "<args:1>",
+        "append_to_existing_output": True,
+        "postprocessing_modules": {
+          "distance": [
+            {"module": "postprocessing.Dist2Depth"}
+          ]
+        }
+      }
+    }
+  ]
+}
